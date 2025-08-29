@@ -1,0 +1,113 @@
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+const API = "http://localhost:5000";
+
+const STATUS_LABELS = {
+  verification_needed: "Verification Needed",
+  processing: "Processing Verification",
+  official: "Official Proof",
+  unsuccessful: "Unsuccessful Proof"
+};
+
+function ProofList({ status, onStatusChange }) {
+  const [proofs, setProofs] = useState([]);
+  const [comment, setComment] = useState({});
+
+  useEffect(() => {
+    axios.get(`${API}/proofs?status=${status}`).then(res => setProofs(res.data));
+  }, [status]);
+
+  const handleStatus = (id, newStatus) => {
+    axios.patch(`${API}/proofs/${id}/status`, { status: newStatus }).then(() => {
+      setProofs(proofs.filter(p => p.id !== id));
+      if (onStatusChange) onStatusChange();
+    });
+  };
+
+  const handleAddComment = (id) => {
+    axios.post(`${API}/proofs/${id}/comments`, {
+      author: "Verifier",
+      content: comment[id]
+    }).then(() => {
+      setComment({ ...comment, [id]: "" });
+      // Refresh proofs
+      axios.get(`${API}/proofs?status=${status}`).then(res => setProofs(res.data));
+    });
+  };
+
+  return (
+    <div>
+      <h2>{STATUS_LABELS[status]}</h2>
+      {proofs.map(proof => (
+        <div key={proof.id} style={{ border: "1px solid #ccc", margin: "10px 0", borderRadius: "8px", padding: "16px", background: "white" }}>
+          <h4>{proof.title}</h4>
+          <div>{proof.content}</div>
+          <div style={{ fontSize: "0.8em", color: "grey" }}>By: {proof.author}</div>
+          <div>
+            {(status === "verification_needed") && (
+              <button onClick={() => handleStatus(proof.id, "processing")}>Start Verification</button>
+            )}
+            {(status === "processing") && (
+              <>
+                <button onClick={() => handleStatus(proof.id, "official")}>Mark as Official</button>
+                <button onClick={() => handleStatus(proof.id, "unsuccessful")}>Mark as Unsuccessful</button>
+              </>
+            )}
+          </div>
+          <div style={{ marginTop: "1em" }}>
+            <b>Comments:</b>
+            <ul>
+              {proof.comments.map((c, idx) => (
+                <li key={idx}><i>{c.author}</i>: {c.content} <span style={{ fontSize: "0.7em", color: "#888" }}>{c.created_at?.slice(0,19).replace("T", " ")}</span></li>
+              ))}
+            </ul>
+            <input
+              value={comment[proof.id] || ""}
+              onChange={e => setComment({ ...comment, [proof.id]: e.target.value })}
+              placeholder="Add comment"
+              style={{ marginRight: 4 }}
+            />
+            <button onClick={() => handleAddComment(proof.id)}>Comment</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AddProof({ onSubmit }) {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    axios.post(`${API}/proofs`, { title, content }).then(() => {
+      setTitle(""); setContent("");
+      if (onSubmit) onSubmit();
+    });
+  };
+  return (
+    <form onSubmit={handleSubmit} style={{ margin: "1em 0" }}>
+      <h3>Submit a Proof</h3>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Proposition" required style={{ width: "100%", marginBottom: 8 }} />
+      <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Proof" required style={{ width: "100%", height: 80, marginBottom: 8 }} />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+
+function App() {
+  const [refresh, setRefresh] = useState(0);
+  return (
+    <div style={{ maxWidth: 700, margin: "auto", padding: 20, background: "#f9f9f9", minHeight: "100vh" }}>
+      <h1>Proof Verification Hub</h1>
+      <AddProof onSubmit={() => setRefresh(r => r + 1)} />
+      <ProofList status="verification_needed" onStatusChange={() => setRefresh(r => r + 1)} />
+      <ProofList status="processing" onStatusChange={() => setRefresh(r => r + 1)} />
+      <ProofList status="official" />
+      <ProofList status="unsuccessful" />
+    </div>
+  );
+}
+
+export default App;
