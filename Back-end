@@ -1,0 +1,77 @@
+const express = require('express');
+const fs = require('fs');
+const cors = require('cors');
+const app = express();
+const PORT = 5000;
+
+app.use(cors());
+app.use(express.json());
+
+const DATA_FILE = './proofs.json';
+
+// Utility to read/write proofs
+function readProofs() {
+  if (!fs.existsSync(DATA_FILE)) return [];
+  return JSON.parse(fs.readFileSync(DATA_FILE));
+}
+function writeProofs(proofs) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(proofs, null, 2));
+}
+
+// List proofs by status
+app.get('/proofs', (req, res) => {
+  const { status } = req.query;
+  const proofs = readProofs();
+  if (status) {
+    return res.json(proofs.filter(p => p.status === status));
+  }
+  res.json(proofs);
+});
+
+// Submit a new proof
+app.post('/proofs', (req, res) => {
+  const { title, content, author } = req.body;
+  const proofs = readProofs();
+  const newProof = {
+    id: Date.now().toString(),
+    title,
+    content,
+    author: author || "Anonymous",
+    status: "verification_needed",
+    comments: [],
+    created_at: new Date().toISOString()
+  };
+  proofs.push(newProof);
+  writeProofs(proofs);
+  res.status(201).json(newProof);
+});
+
+// Update proof status
+app.patch('/proofs/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const proofs = readProofs();
+  const proof = proofs.find(p => p.id === id);
+  if (!proof) return res.status(404).json({ error: "Not found" });
+  proof.status = status;
+  writeProofs(proofs);
+  res.json(proof);
+});
+
+// Add a comment
+app.post('/proofs/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const { author, content } = req.body;
+  const proofs = readProofs();
+  const proof = proofs.find(p => p.id === id);
+  if (!proof) return res.status(404).json({ error: "Not found" });
+  proof.comments.push({
+    author: author || "Verifier",
+    content,
+    created_at: new Date().toISOString()
+  });
+  writeProofs(proofs);
+  res.json(proof);
+});
+
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
